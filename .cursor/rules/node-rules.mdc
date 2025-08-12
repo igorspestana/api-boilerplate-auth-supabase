@@ -1,0 +1,272 @@
+---
+description: Regras e convenções para a API Node.js
+globs: ["**/*.{ts,js}"]
+alwaysApply: true
+---
+
+# Convenções Gerais
+
+- Usar **TypeScript** em todo o projeto.
+- Estrutura de pastas separada por domínio (ex: `/routes`, `/controllers`, `/services`).
+- Utilizar **Express** com middlewares enxutos.
+- Aplicar `dotenv` para gerenciamento de variáveis de ambiente.
+- Definir erros e respostas no formato padronizado: `{ status, message, data }`.
+
+# Padrões de Código
+
+- Use `camelCase` para variáveis e funções, e `PascalCase` para classes
+- Use imports absolutos via `tsconfig.paths`
+- Sem `console.log` em produção. Use logger (`winston`)
+- Evite funções anônimas inline. Sempre nomeie handlers e serviços
+- Não utilize alias em imports. Use sempre o nome completo do módulo
+
+# Estrutura
+
+- `src/routes` → Definições de rotas
+- `src/controllers` → Lógica de requisição
+- `src/services` → Lógica de negócio isolada
+- `src/middlewares` → Validação e segurança
+- `src/utils` → Funções auxiliares
+- `src/config` → Configurações globais
+
+# Padrões de Rotas
+
+- Use arquivos nomeados por recurso (`user.routes.ts`) e separe métodos por verbo HTTP (ex: `getUser`, `createUser`)
+- Organize rotas por domínio de negócio
+- Use prefixos consistentes para agrupamento de funcionalidades
+
+# Testes
+
+- Testes unitários com **Jest**
+- Cobertura mínima recomendada: 80%
+- Organize testes espelhando a estrutura de pastas da aplicação
+
+# Segurança
+
+- Autenticação JWT (verificação no middleware)
+- Validação de entrada com Zod
+- Sempre verifique permissões baseadas no perfil do usuário
+- Rate limiting configurável por endpoint e por usuário
+
+# Documentação da API (Swagger)
+
+- Toda rota criada deve ser documentada no Swagger (`OpenAPI 3.x`)
+- Use biblioteca `swagger-jsdoc` + `swagger-ui-express`
+- A definição deve incluir:
+  - Método (`GET`, `POST`, etc)
+  - Path e descrição clara da funcionalidade
+  - Corpo da requisição (`requestBody`) com schemas
+  - Respostas esperadas (`200`, `400`, `401`, etc)
+  - Segurança (JWT obrigatório? Perfis permitidos?)
+- Arquivo base `swagger.yaml` ou use `@swagger` em comentários JSDoc
+- Swagger disponível localmente em `/docs` (restrito em produção)
+- Proteja o Swagger com autenticação básica em produção
+
+# Autenticação e Autorização
+
+- Use tokens JWT para autenticação
+- Implemente controle de acesso baseado em roles com perfis
+- Valide todas as entradas com schemas Zod
+- Configure CORS adequadamente
+- Use Helmet para headers de segurança
+- Validação de tipo de arquivo em uploads
+
+# Tratamento de Erros
+
+- Use respostas de erro padronizadas:
+```json
+{
+  "status": "error",
+  "message": "Descrição do erro",
+  "data": {}
+}
+```
+
+# Respostas de Sucesso
+
+- Use respostas de sucesso padronizadas:
+```json
+{
+  "status": "success",
+  "message": "Operação realizada com sucesso",
+  "data": {}
+}
+```
+
+# Requer uso de async/await
+
+## Regra
+Não é permitido usar `.then()` ou `.catch()` diretamente sobre Promises. Use `async/await` para controle de fluxo assíncrono.
+
+## Justificativa
+Melhora a legibilidade e padroniza o estilo de código assíncrono em toda a aplicação.
+
+## Exceções
+- Quando for necessário utilizar `Promise.all`, `Promise.race` ou `Promise.allSettled`.
+- Quando o contexto exigir um tratamento explícito de stream ou evento.
+
+## Exemplo inválido
+
+```ts
+fetchData()
+  .then(res => handle(res))
+  .catch(err => log(err));
+```
+## Exemplo inválido
+
+```ts
+try {
+  const res = await fetchData();
+  handle(res);
+} catch (err) {
+  log(err);
+}
+```
+
+# Logging
+
+- Use Winston para logging estruturado
+- Evite logs verbosos em produção (use níveis: `error`, `warn`, `info`, `debug`)
+- Configure transporte para diferentes ambientes (ex: `Console` em dev, `File`/`Remote` em produção)
+- Logs escritos em:
+  - `logs/error.log` - Apenas logs de erro
+  - `logs/combined.log` - Todos os logs
+  - Saída no console em desenvolvimento
+
+# HTTP Clients
+
+- Use **Axios** como cliente HTTP padrão para todas as requisições externas
+- Configure instâncias centralizadas em `src/config/axios.ts`
+- Sempre use `axios.isAxiosError()` para verificar tipo de erro
+- Use configurações padrão para casos simples, sobrescreva para casos específicos
+- Use tipagem TypeScript com interfaces para respostas
+
+# Integração com Banco de Dados
+
+- Use Supabase PostgreSQL
+- Implemente tratamento adequado de erros para operações de banco
+- Use transações para operações complexas
+- Valide dados antes das operações de banco
+
+# Performance
+
+- Implemente indexação adequada em consultas de banco
+- Use connection pooling
+- Implemente cache onde apropriado
+- Monitore e otimize consultas lentas
+
+# Configuração de Ambiente
+
+- Use variáveis de ambiente para todos os dados sensíveis
+- Forneça valores padrão para desenvolvimento
+- Valide variáveis de ambiente obrigatórias na inicialização
+- Use configurações diferentes para ambientes diferentes
+- Use `docs/env.example` como base e valide variáveis com Zod no boot da app
+
+## Variáveis de Ambiente Obrigatórias
+
+Consulte `docs/env.example` para a lista completa de variáveis de ambiente.
+
+**Principais categorias:**
+- **Servidor**: PORT, NODE_ENV, BASE_URL
+- **JWT**: JWT_SECRET, JWT_EXPIRES_IN, JWT_ALGORITHM
+- **Supabase**: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
+- **CORS**: CORS_ORIGIN, CORS_CREDENTIALS, CORS_METHODS
+- **Logging**: LOG_LEVEL, LOG_DIR, LOG_FORMAT
+- **Rate Limiting**: RATE_LIMIT_AUTH, RATE_LIMIT_GENERAL, RATE_LIMIT_WINDOW
+- **Frontend**: FRONTEND_URL, LOGIN_REDIRECT_URL, LOGOUT_REDIRECT_URL
+- **HTTP Client**: HTTP_TIMEOUT, HTTP_RETRY_ATTEMPTS, HTTP_RETRY_DELAY, HTTP_CACHE_TTL
+
+# Qualidade do Código
+
+- Siga modo estrito do TypeScript
+- Use definições de tipo adequadas
+- Implemente boundaries de erro adequados
+- Escreva código auto-documentado com nomenclatura clara
+- Adicione comentários JSDoc para funções complexas
+
+# Deploy
+
+- Processo de build com `npm run build`
+- Use PM2 ou similar para gerenciamento de processos
+- Implemente endpoints de health check
+- Use configurações específicas por ambiente
+- Implemente tratamento de shutdown gracioso
+
+# Rate Limiting
+
+- Implemente rate limiting seguindo a documentação em `docs/guardrails.mdc`
+- Use middlewares específicos para diferentes tipos de endpoints
+- Configure via variáveis de ambiente conforme documentado
+- Implemente logging estruturado de tentativas de rate limiting
+
+# Monitoramento
+
+- Implemente endpoints de health check
+- Use logging estruturado para monitoramento
+- Implemente coleta de métricas
+- Configure rastreamento de erros e alertas
+- Monitore performance da API e tempos de resposta
+
+# Start server
+```
+const PORT = config.port;
+
+app.listen(PORT, () => {
+  const baseUrl = `http://localhost:${PORT}`;
+  
+  // Server startup banner
+  console.log('\n' + '='.repeat(60));
+  console.log('🚀 API BOILERPLATE');
+  console.log('='.repeat(60));
+  console.log(`🌍 Environment: ${config.nodeEnv.toUpperCase()}`);
+  console.log(`📡 Server running on: ${baseUrl}`);
+  console.log(`🕐 Started at: ${new Date().toLocaleString()}`);
+  console.log('');
+  console.log('📍 AVAILABLE ENDPOINTS:');
+  console.log(`   🏥 Health Check: ${baseUrl}/health`);
+  console.log(`   📚 API Documentation: ${baseUrl}/docs`);
+  console.log(`   🔧 API Base: ${baseUrl}/api`);
+  console.log('');
+  console.log('🛡️  SECURITY SETTINGS:');
+  console.log(`   🌐 CORS Origin: ${config.cors.origin}`);
+  console.log(`   🔒 JWT Expires: ${config.jwt.expiresIn}`);
+  console.log('');
+  
+  // Environment warnings
+  const warnings = [];
+  if (config.supabase.url.includes('your-project')) {
+    warnings.push('⚠️  Supabase URL not configured');
+  }
+  if (config.supabase.serviceRoleKey.includes('your-supabase')) {
+    warnings.push('⚠️  Supabase Service Role Key not configured');
+  }
+  if (config.jwt.secret.includes('your-super-secret')) {
+    warnings.push('⚠️  JWT Secret is using default value');
+  }
+  
+  if (warnings.length > 0) {
+    console.log('⚠️  CONFIGURATION WARNINGS:');
+    warnings.forEach(warning => console.log(`   ${warning}`));
+    console.log('   💡 Create .env file with your actual credentials');
+    console.log('');
+  }
+  
+  console.log('💡 QUICK COMMANDS:');
+  console.log('   • Test API: curl ' + baseUrl + '/health');
+  console.log('   • View Docs: open ' + baseUrl + '/docs');
+  console.log('   • Stop Server: Ctrl+C');
+  console.log('='.repeat(60) + '\n');
+  
+  // Also log to winston
+  logger.info('='.repeat(60));
+  logger.info(`🌍 Environment: ${config.nodeEnv.toUpperCase()}`);
+  logger.info(`🚀 API Boilerplate server started on port ${PORT}`);
+  logger.info(`📚 API Documentation available at: ${baseUrl}/docs`);
+  logger.info(`🏥 Health check available at: ${baseUrl}/health`);
+  logger.info(`🛡️  SECURITY SETTINGS:
+   🌐 CORS Origin: ${config.cors.origin}
+   🔒 JWT Expires: ${config.jwt.expiresIn}`); 
+  logger.info('='.repeat(60));
+});
+```

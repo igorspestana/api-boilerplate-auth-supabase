@@ -1,0 +1,708 @@
+---
+description: Padrão e documentação geral de endpoints da API Boilerplate
+globs: []
+alwaysApply: true
+---
+
+# API Boilerplate - Documentação de Endpoints
+
+## Informações Gerais
+
+- **Base URL**: `/api`
+- **Documentação Swagger**: `/docs`
+- **Health Check**: `/health`
+- **Autenticação**: JWT Bearer Token
+- **Formato de Resposta**: JSON padronizado
+
+### Formato de Resposta Padrão
+
+```json
+{
+  "status": "success" | "error",
+  "message": "Descrição da operação",
+  "data": {}
+}
+```
+
+**Campos:**
+- `status`: "success" para operações bem-sucedidas, "error" para falhas
+- `message`: Descrição clara e concisa da operação ou erro
+- `data`: Objeto contendo os dados da resposta ou detalhes do erro
+
+## Autenticação
+
+### Endpoints Públicos
+- `POST /api/auth/login` - Login de usuário
+- `POST /api/auth/reset-password` - Solicitar reset de senha
+
+### Endpoints Protegidos
+Todos os outros endpoints requerem autenticação via JWT Bearer Token:
+```
+Authorization: Bearer <jwt_token>
+```
+
+### Perfis de Acesso
+- **admin**: Acesso total ao sistema, pode criar usuários e gerenciar todos os recursos
+- **user**: Acesso limitado, pode gerenciar apenas seus próprios projetos
+
+### Estrutura de Perfis
+- Cada usuário possui um `profile_id` que referencia a tabela `profiles`
+- O campo `profile_name` no JWT contém o valor do perfil ("admin" ou "user")
+- Perfis determinam as permissões de acesso aos endpoints
+
+### Tratamento de Erros de Autenticação
+
+O sistema trata diferentes tipos de erro seguindo o formato padrão de resposta:
+
+#### Exemplos de Erros Comuns
+
+**Erro de Credenciais Inválidas:**
+```json
+{
+  "status": "error",
+  "message": "Invalid email or password",
+  "data": {
+    "code": "INVALID_CREDENTIALS",
+    "field": "email"
+  }
+}
+```
+
+**Erro de Email Não Confirmado:**
+```json
+{
+  "status": "error",
+  "message": "Please confirm your email address",
+  "data": {
+    "code": "EMAIL_NOT_CONFIRMED",
+    "field": "email"
+  }
+}
+```
+
+**Erro de Usuário Não Encontrado:**
+```json
+{
+  "status": "error",
+  "message": "User not found in system. Please contact administrator.",
+  "data": {
+    "code": "USER_NOT_FOUND",
+    "field": "email"
+  }
+}
+```
+
+**Erro de Usuário Inativo:**
+```json
+{
+  "status": "error",
+  "message": "User lookup failed",
+  "data": {
+    "code": "USER_BANNED",
+    "field": "status"
+  }
+}
+```
+
+#### Códigos de Erro de Autenticação:
+- **INVALID_CREDENTIALS:** Email ou senha incorretos
+- **EMAIL_NOT_CONFIRMED:** Email não confirmado no Supabase
+- **USER_NOT_FOUND:** Usuário autenticado mas não cadastrado no sistema
+- **USER_BANNED:** Usuário inativo ou não encontrado
+- **USER_EXISTS:** Email já cadastrado
+- **AUTH_SYSTEM_ERROR:** Erro de acesso ao Supabase Auth
+- **PASSWORD_RESET_ERROR:** Erro no envio de email de reset
+- **STATUS_UPDATE_ERROR:** Erro ao atualizar status do usuário
+
+## Endpoints de Autenticação (`/api/auth`)
+
+### POST /api/auth/login
+**Público** - Login de usuário
+
+**Request Body:**
+```json
+{
+  "email": "usuario@exemplo.com",
+  "password": "senha123"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Login successful",
+  "data": {
+    "token": "jwt_token_here",
+    "user": {
+      "id": "uuid",
+      "name": "User Name",
+      "email": "user@example.com",
+      "profile_id": "uuid",
+      "profile_name": "admin"
+    }
+  }
+}
+```
+
+### POST /api/auth/reset-password
+**Público** - Solicitar reset de senha
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Password reset email sent",
+  "data": {}
+}
+```
+
+### GET /api/auth/me
+**Protegido** - Obter dados do usuário atual
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "User data retrieved successfully",
+  "data": {
+    "id": "uuid",
+    "name": "User Name",
+    "email": "user@example.com",
+    "status": "active",
+    "profile_id": "uuid",
+    "profile_name": "admin",
+    "created_at": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+### GET /api/auth/validate
+**Protegido** - Validar token JWT
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Token valid",
+  "data": {
+    "valid": true,
+    "user_id": "uuid"
+  }
+}
+```
+
+### POST /api/auth/users
+**Admin Only** - Criar novo usuário
+
+**Request Body:**
+```json
+{
+  "name": "User Name",
+  "email": "user@example.com",
+  "profile_id": "uuid-of-profile"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "User created successfully",
+  "data": {
+    "id": "uuid",
+    "name": "User Name",
+    "email": "user@example.com",
+    "status": "active",
+    "profile_id": "uuid",
+    "created_at": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+### PATCH /api/auth/users/:id/status
+**Admin Only** - Atualizar status do usuário
+
+**Request Body:**
+```json
+{
+  "status": "active" | "inactive"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "User status updated",
+  "data": {
+    "id": "uuid",
+    "status": "active"
+  }
+}
+```
+
+### POST /api/auth/change-password
+**Admin Only** - Alterar senha de usuário
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com",
+  "newPassword": "new_password123"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Password changed successfully",
+  "data": {}
+}
+```
+
+### POST /api/auth/check-sync
+**Admin Only** - Verificar sincronização de usuário
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "User synchronization status verified",
+  "data": {
+    "email": "user@example.com",
+    "exists": true,
+    "status": "active"
+  }
+}
+```
+
+## Endpoints de Projetos (`/api/projects`)
+
+### POST /api/projects
+**Protegido** - Criar novo projeto
+
+**Request Body:**
+```json
+{
+  "name": "Project Name"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Project created successfully",
+  "data": {
+    "id": "uuid",
+    "user_id": "uuid",
+    "name": "Project Name",
+    "status": "pending",
+    "created_at": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+### GET /api/projects
+**Protegido** - Listar projetos do usuário
+
+**Query Parameters:**
+- `status` (opcional): Filtrar por status (`pending`, `active`, `completed`, `cancelled`)
+- `page` (opcional): Número da página (padrão: 1)
+- `limit` (opcional): Itens por página (padrão: 10, máximo: 100)
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Projects retrieved successfully",
+  "data": {
+    "projects": [
+      {
+        "id": "uuid",
+        "name": "Project Name",
+        "status": "active",
+        "created_at": "2024-01-15T10:30:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total": 25,
+      "pages": 3
+    }
+  }
+}
+```
+
+### GET /api/projects/:id
+**Protegido** - Obter detalhes do projeto
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Project details retrieved",
+  "data": {
+    "id": "uuid",
+    "user_id": "uuid",
+    "name": "Project Name",
+    "status": "active",
+    "created_at": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+### PATCH /api/projects/:id
+**Protegido** - Atualizar projeto
+
+**Request Body:**
+```json
+{
+  "name": "New Project Name",
+  "status": "active" | "completed" | "cancelled"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Project updated successfully",
+  "data": {
+    "id": "uuid",
+    "name": "New Project Name",
+    "status": "active",
+    "updated_at": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+### DELETE /api/projects/:id
+**Protegido** - Excluir projeto
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Project deleted successfully",
+  "data": {}
+}
+```
+
+## Health Check
+
+### GET /health
+**Público** - Verificar status da API
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "API running normally",
+  "data": {
+    "timestamp": "2024-01-15T10:30:00.000Z",
+    "environment": "development",
+    "version": "1.0.0",
+    "uptime": 3600
+  }
+}
+```
+
+## Documentação Swagger
+
+### GET /docs
+**Público** - Interface interativa da documentação da API
+
+## Códigos de Status HTTP
+
+- **200**: Sucesso
+- **201**: Criado com sucesso
+- **400**: Erro de validação
+- **401**: Não autorizado
+- **403**: Acesso negado
+- **404**: Recurso não encontrado
+- **422**: Entidade não processável
+- **429**: Muitas requisições
+- **500**: Erro interno do servidor
+
+## Tratamento de Erros
+
+Todos os erros seguem o formato padrão:
+
+```json
+{
+  "status": "error",
+  "message": "Detailed error description",
+  "data": {
+    "field": "Specific field with error",
+    "code": "ERROR_CODE"
+  }
+}
+```
+
+Para detalhes específicos sobre a implementação de autenticação, consulte `docs/auth.mdc`.
+
+## Rate Limiting
+
+### Overview
+
+O sistema implementa rate limiting configurável para diferentes tipos de endpoints, protegendo contra abuso e garantindo performance adequada.
+
+### Headers de Resposta
+
+O sistema retorna headers de rate limiting para feedback ao cliente:
+
+```
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 3
+X-RateLimit-Reset: 1640995200
+Retry-After: 60
+```
+
+### Resposta de Erro
+
+Quando o limite é excedido, a API retorna:
+
+```json
+{
+  "status": "error",
+  "message": "Too many authentication attempts, please try again later",
+  "data": {
+    "retryAfter": 60,
+    "limit": 5,
+    "window": 1,
+    "code": "RATE_LIMIT_EXCEEDED"
+  }
+}
+```
+
+### Configuração por Tipo de Endpoint
+
+- **Auth endpoints**: 5 requests/minuto por IP
+- **General endpoints**: 100 requests/minuto por usuário
+- **Health check**: 1000 requests/minuto por IP
+- **Admin endpoints**: 50 requests/minuto por admin
+- **Janela de tempo**: 1 minuto
+
+### Middlewares Disponíveis
+
+#### `authRateLimit`
+- **Aplicação**: Endpoints de autenticação (`/api/auth/login`, `/api/auth/reset-password`)
+- **Chave**: IP address
+- **Limite**: Configurável via `RATE_LIMIT_AUTH`
+
+#### `generalRateLimit`
+- **Aplicação**: Endpoints gerais da API
+- **Chave**: User ID (se autenticado) ou IP address
+- **Limite**: Configurável via `RATE_LIMIT_GENERAL`
+
+#### `healthRateLimit`
+- **Aplicação**: Endpoint de health check (`/health`)
+- **Chave**: IP address
+- **Limite**: Configurável via `RATE_LIMIT_HEALTH`
+
+#### `adminRateLimit`
+- **Aplicação**: Endpoints administrativos
+- **Chave**: User ID (admin)
+- **Limite**: Metade do limite geral (50 requests/minuto)
+
+### Aplicação nas Rotas
+
+```typescript
+// Auth routes
+router.post('/login', authRateLimit, validateAuth.login, authController.login);
+router.post('/reset-password', authRateLimit, validateAuth.resetPassword, authController.resetPassword);
+
+// General routes
+router.get('/projects', authenticate, generalRateLimit, validateProjects.listProjects, projectsController.listProjects);
+
+// Admin routes
+router.post('/users', authenticate, checkRole(['admin']), adminRateLimit, validateAuth.createUser, authController.createUser);
+
+// Health check
+app.get('/health', healthRateLimit, (req, res) => { /* ... */ });
+```
+
+### Configuração por Ambiente
+
+#### Desenvolvimento
+```env
+RATE_LIMIT_AUTH=10
+RATE_LIMIT_GENERAL=200
+RATE_LIMIT_HEALTH=2000
+RATE_LIMIT_WINDOW=1
+```
+
+#### Produção
+```env
+RATE_LIMIT_AUTH=5
+RATE_LIMIT_GENERAL=100
+RATE_LIMIT_HEALTH=1000
+RATE_LIMIT_WINDOW=1
+```
+
+#### Testes
+```env
+RATE_LIMIT_AUTH=100
+RATE_LIMIT_GENERAL=1000
+RATE_LIMIT_HEALTH=10000
+RATE_LIMIT_WINDOW=1
+```
+
+## Segurança
+
+> **Nota**: Para detalhes sobre configurações de segurança, CORS, validação de entrada e proteções implementadas, consulte `docs/guardrails.mdc`.
+
+- **Autenticação**: JWT Bearer Token obrigatório para endpoints protegidos
+- **Validação**: Todos os inputs validados com Zod
+- **Rate Limiting**: Proteção contra abuso configurável por tipo de endpoint
+
+## Logging Estruturado
+
+- **Winston**: Sistema de logging estruturado em JSON
+- **Níveis**: `error`, `warn`, `info`, `debug`
+- **Arquivos**: 
+  - `logs/error.log` - Apenas logs de erro
+  - `logs/combined.log` - Todos os logs
+- **Console**: Saída formatada em desenvolvimento
+- **Autenticação**: Logs específicos para operações de auth (consulte `docs/auth.mdc`)
+
+> **Nota**: Para detalhes sobre auditoria de segurança e logs de ações críticas, consulte `docs/guardrails.mdc` seção "Auditoria".
+
+## HTTP Clients (Axios)
+
+### Padrões de Uso
+
+- **Configuração flexível**: Use configurações padrão ou sobrescreva por caso específico
+- **Retry logic**: Implementado para operações críticas com exponential backoff
+- **Cache**: Para requisições que não mudam frequentemente
+
+### Exemplo de Uso
+
+```typescript
+import { logger } from '../utils/logger';
+
+// Requisição com configuração padrão
+const fetchExternalData = async (id: string) => {
+  try {
+    logger.info('Fetching external data', { id });
+    const response = await axios.get(`/api/external/${id}`);
+    logger.info('External data fetched successfully', { id, status: response.status });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      logger.error('External API error', {
+        id,
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message,
+      });
+      throw new Error(`External API error: ${error.response?.data?.message || error.message}`);
+    }
+    logger.error('Non-Axios error in external data fetch', { id, error: error.message });
+    throw error;
+  }
+};
+
+// Requisição com configuração específica
+const uploadLargeFile = async (file: File) => {
+  try {
+    logger.info('Starting large file upload', { 
+      fileName: file.name, 
+      fileSize: file.size 
+    });
+    
+    const response = await axios.post('/api/upload', file, {
+      timeout: 300000, // 5 minutos para upload
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round(
+          (progressEvent.loaded * 100) / (progressEvent.total || 1)
+        );
+        logger.info('Upload progress', { 
+          fileName: file.name, 
+          percentCompleted 
+        });
+      },
+    });
+    
+    logger.info('File upload completed successfully', { 
+      fileName: file.name, 
+      status: response.status 
+    });
+    return response.data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      logger.error('File upload failed', {
+        fileName: file.name,
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message,
+      });
+      throw new Error(`Upload failed: ${error.response?.data?.message || error.message}`);
+    }
+    logger.error('Non-Axios error in file upload', { 
+      fileName: file.name, 
+      error: error.message 
+    });
+    throw error;
+  }
+};
+
+// Requisição crítica com retry customizado
+const criticalApiCall = async (data: any) => {
+  const retryConfig = {
+    retries: 5,
+    retryDelay: 2000,
+    retryCondition: (error: any) => axios.isAxiosError(error) && error.response?.status >= 500,
+  };
+  
+  logger.info('Making critical API call', { 
+    endpoint: '/api/critical',
+    retries: retryConfig.retries 
+  });
+  
+  try {
+    const result = await retryRequest(
+      () => axios.post('/api/critical', data),
+      retryConfig.retries,
+      retryConfig.retryDelay
+    );
+    
+    logger.info('Critical API call successful', { 
+      endpoint: '/api/critical',
+      status: result.status 
+    });
+    
+    return result;
+  } catch (error) {
+    logger.error('Critical API call failed after retries', {
+      endpoint: '/api/critical',
+      retries: retryConfig.retries,
+      error: error.message,
+    });
+    throw error;
+  }
+};
+```
+
+## Configuração
+
+- **Variáveis de Ambiente**: Consulte `docs/env.example` para configuração completa
+- **Rate Limiting**: Configurado via variáveis RATE_LIMIT_*
+- **CORS**: Configurado via variáveis CORS_* (consulte `docs/guardrails.mdc` seção 6 para configuração detalhada)

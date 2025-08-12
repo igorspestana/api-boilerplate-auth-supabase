@@ -1,0 +1,224 @@
+---
+description: Este guia fornece instruções passo a passo para fazer o deploy da API Boilerplate.
+globs: []
+alwaysApply: true
+---
+
+# 1. Configuração do Supabase
+
+## Criar Projeto no Supabase
+1. Acesse [supabase.com](https://supabase.com)
+2. Crie um novo projeto
+3. Anote a URL do projeto e as chaves de API
+
+## Configurar Tabelas
+Execute os seguintes comandos SQL no editor do Supabase:
+
+```sql
+-- Criar tabela profiles
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Criar tabela users
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  profile_id UUID NOT NULL REFERENCES profiles(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Criar tabela projects
+CREATE TABLE projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'completed', 'cancelled')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Inserir dados iniciais
+INSERT INTO profiles (name) VALUES 
+  ('admin'),
+  ('user');
+
+-- Inserir usuário admin inicial (substitua com dados reais)
+INSERT INTO users (name, email, profile_id) VALUES 
+  ('Admin User', 'admin@example.com', (SELECT id FROM profiles WHERE name = 'admin'));
+```
+
+# 2. Configuração do Ambiente
+
+## Variáveis de Ambiente
+Crie um arquivo `.env` baseado no `docs/env.example`. Para produção, ajuste os valores conforme necessário:
+
+**Variáveis críticas para produção:**
+- `NODE_ENV=production`
+- `JWT_SECRET` - Use uma chave forte e única
+- `SUPABASE_URL` - URL do seu projeto Supabase
+- `SUPABASE_SERVICE_ROLE_KEY` - Chave de serviço do Supabase
+- `CORS_ORIGIN` - URL do seu frontend em produção (consulte `docs/guardrails.mdc` seção 6 para configuração detalhada)
+- `FRONTEND_URL` - URL do seu frontend em produção
+
+Consulte `docs/env.example` para a lista completa de variáveis disponíveis.
+
+# 3. Deploy na Railway
+
+## Preparação
+1. Crie uma conta no [Railway](https://railway.app)
+2. Conecte seu repositório GitHub
+3. Configure as variáveis de ambiente
+
+## Deploy
+1. Faça push do código para o repositório
+2. O Railway detectará automaticamente o projeto Node.js
+3. Configure as variáveis de ambiente no painel do Railway
+4. O deploy será executado automaticamente
+
+## Comandos de Deploy
+```bash
+# Build do projeto
+npm run build
+
+# Executar em produção
+npm start
+```
+
+# 4. Deploy em Outros Provedores
+
+## Heroku
+1. Crie um app no Heroku
+2. Configure as variáveis de ambiente
+3. Faça deploy usando Git:
+
+```bash
+heroku login
+heroku git:remote -a your-app-name
+git push heroku main
+```
+
+## Vercel
+1. Instale a CLI do Vercel: `npm i -g vercel`
+2. Configure o projeto:
+
+```bash
+vercel
+```
+
+3. Configure as variáveis de ambiente no dashboard
+
+## Docker
+Crie um `Dockerfile`:
+
+```dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+EXPOSE 3001
+
+CMD ["npm", "start"]
+```
+
+# 5. Monitoramento e Logs
+
+## Logs
+- **Sistema**: Winston para logging estruturado em JSON
+- **Arquivos**: 
+  - `logs/error.log` - Apenas logs de erro
+  - `logs/combined.log` - Todos os logs
+- **Níveis**: `error`, `warn`, `info`, `debug`
+- **Monitoramento**: Use ferramentas como LogSnag ou Sentry para monitoramento
+
+## Health Check
+- Endpoint: `GET /health`
+- Retorna status da aplicação
+
+## Métricas
+- Implemente monitoramento com Prometheus/Grafana
+- Configure alertas para erros críticos
+
+# 6. Configuração do Domínio
+
+## DNS
+1. Configure um subdomínio para a API (ex: `api.seu-dominio.com`)
+2. Aponte para o servidor/serviço onde está rodando
+
+## SSL/TLS
+1. Configure certificados SSL
+2. Force HTTPS em produção
+
+# 7. Segurança
+
+## Checklist de Segurança
+- [ ] Alterar JWT_SECRET para valor seguro
+- [ ] Configurar CORS adequadamente (consulte `docs/guardrails.mdc` seção 6)
+- [ ] Validar todas as entradas
+- [ ] Implementar rate limiting
+- [ ] Configurar logs de segurança
+- [ ] Atualizar dependências regularmente
+
+# 8. Backup e Recuperação
+
+## Banco de Dados
+- Configure backups automáticos no Supabase
+- Teste procedimentos de recuperação
+
+## Arquivos
+- Configure backup dos arquivos no Storage
+- Mantenha múltiplas cópias
+
+# 9. Testes em Produção
+
+## Smoke Tests
+Execute testes básicos após o deploy:
+
+```bash
+# Health check
+curl https://your-api-domain.com/health
+
+# API docs
+curl https://your-api-domain.com/docs
+
+# Authentication test
+curl -X POST https://your-api-domain.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@example.com","password":"password"}'
+```
+
+# 10. Manutenção
+
+## Atualizações
+1. Teste em ambiente de desenvolvimento
+2. Faça backup antes de atualizar
+3. Execute migrações de banco se necessário
+4. Monitore logs após a atualização
+
+## Escalabilidade
+- Configure load balancing se necessário
+- Monitore performance e recursos
+- Otimize consultas do banco de dados
+
+# Troubleshooting
+
+## Problemas Comuns
+- **Erro de conexão com Supabase**: Verifique as credenciais
+- **Erro de CORS**: Configure o CORS_ORIGIN corretamente (consulte `docs/guardrails.mdc` seção 6 para troubleshooting)
+- **Erro de JWT**: Verifique o JWT_SECRET
+- **Erro de upload**: Verifique as configurações do bucket
+
+## Logs Importantes
+- Verifique `logs/error.log` para erros críticos
+- Monitore logs estruturados do Winston
+- Configure alertas para erros recorrentes
+- Analise logs de autenticação para atividades suspeitas 

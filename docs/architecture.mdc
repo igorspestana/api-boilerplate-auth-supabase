@@ -1,0 +1,110 @@
+---
+description: Visão geral da arquitetura técnica da API Boilerplate
+globs: []
+alwaysApply: true
+---
+
+# Arquitetura Geral
+
+A API Boilerplate é composto por múltiplos serviços organizados em uma arquitetura modular, escalável e desacoplada.
+
+## Componentes
+
+- **API**: Gerenciador central de regras de negócio e roteamento.
+- **Supabase**: Banco de dados PostgreSQL, autenticação JWT e armazenamento de arquivos temporários.
+
+# Estrutura da API
+
+A API segue uma arquitetura em camadas com separação clara de responsabilidades:
+
+## Estrutura de Pastas
+
+```
+src/
+├── routes/          # Definições de rotas por domínio
+├── controllers/     # Lógica de requisição e resposta
+├── services/        # Lógica de negócio isolada
+├── middlewares/     # Validação, autenticação e segurança
+├── utils/           # Funções auxiliares e utilitários
+└── config/          # Configurações globais da aplicação
+```
+
+## Responsabilidades por Camada
+
+### Routes (`src/routes/`)
+- Definição de endpoints HTTP
+- Organização por domínio de negócio
+- Aplicação de middlewares específicos
+- Roteamento para controllers apropriados
+
+### Controllers (`src/controllers/`)
+- Recebimento e validação de requisições
+- Chamada de serviços de negócio
+- Formatação de respostas
+- Tratamento de erros de requisição
+
+### Services (`src/services/`)
+- Implementação da lógica de negócio
+- Interação com banco de dados
+- Processamento de dados
+- Regras de validação complexas
+
+### Middlewares (`src/middlewares/`)
+- Autenticação JWT
+- Validação de entrada com Zod
+- Controle de acesso baseado em perfis
+- Rate limiting e segurança
+
+### Utils (`src/utils/`)
+- Funções auxiliares reutilizáveis
+- Helpers para formatação
+- Utilitários de validação
+- Funções de criptografia
+
+### Config (`src/config/`)
+- Configurações de ambiente
+- Conexões com serviços externos
+- Configurações de logging (Winston)
+- Configurações de HTTP clients (Axios)
+- Parâmetros globais da aplicação
+
+## Padrões de Organização
+
+- **Separação por domínio**: Cada funcionalidade tem suas próprias rotas, controllers e services
+- **Nomenclatura consistente**: Arquivos nomeados por recurso (ex: `user.routes.ts`, `user.controller.ts`)
+- **Imports absolutos**: Uso de `tsconfig.paths` para imports limpos
+- **Modularidade**: Cada módulo é independente e testável
+
+## HTTP Clients
+
+A API utiliza **Axios** como cliente HTTP padrão para todas as requisições externas:
+
+- **Configuração flexível**: Padrões globais via variáveis de ambiente, sobrescrita por caso específico
+- **Instâncias centralizadas**: Configuradas em `src/config/axios.ts`
+- **Interceptors**: Logging automático de requisições e respostas
+- **Tratamento de erros**: Padronizado com `axios.isAxiosError()`
+- **Retry logic**: Configurável por operação
+- **Cache**: Para requisições que não mudam frequentemente
+
+## Autenticação Híbrida
+
+O sistema implementa autenticação híbrida combinando Supabase Auth e JWT customizado:
+
+- **Supabase Auth**: Validação de credenciais e gerenciamento de sessões
+- **JWT Customizado**: Tokens com dados de perfil para controle de acesso
+- **Sincronização**: Status de usuários sincronizado entre sistemas
+- **Cleanup**: Rollback automático em caso de falha na criação
+- **Temporização**: Senhas temporárias com reset automático
+
+## Configuração de Ambiente
+
+A aplicação utiliza variáveis de ambiente para configuração. Consulte `docs/env.example` para a lista completa de variáveis necessárias:
+
+- **Servidor**: PORT, NODE_ENV, BASE_URL
+- **JWT**: JWT_SECRET, JWT_EXPIRES_IN, JWT_ALGORITHM
+- **Supabase**: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY
+- **CORS**: CORS_ORIGIN, CORS_CREDENTIALS, CORS_METHODS (consulte `docs/guardrails.mdc` seção 6 para detalhes completos)
+- **Logging**: LOG_LEVEL, LOG_DIR, LOG_FORMAT
+- **Rate Limiting**: RATE_LIMIT_AUTH, RATE_LIMIT_GENERAL, RATE_LIMIT_WINDOW
+- **Frontend**: FRONTEND_URL, LOGIN_REDIRECT_URL, LOGOUT_REDIRECT_URL
+- **HTTP Client**: HTTP_TIMEOUT, HTTP_RETRY_ATTEMPTS, HTTP_RETRY_DELAY, HTTP_CACHE_TTL

@@ -1,0 +1,135 @@
+---
+description: Decisão de arquitetura do sistema de autenticação usando abordagem híbrida com Supabase Auth e JWT Customizado
+globs:
+  - src/config/supabase.ts
+  - src/services/authService.ts
+  - src/controllers/authController.ts
+  - src/middlewares/authenticate.ts
+alwaysApply: false
+---
+
+# ADR 01: Arquitetura do Sistema de Autenticação
+
+## Status
+Aceito
+
+## Contexto
+O sistema necessita de um mecanismo de autenticação robusto que equilibre segurança, escalabilidade e manutenibilidade. A escala inicial é pequena (aproximadamente 20 usuários), mas precisa ser projetada considerando o crescimento futuro.
+
+## Decisão
+Decidimos implementar uma abordagem híbrida de autenticação usando Supabase Auth + JWT Customizado, especificamente:
+
+1. Usar Supabase Auth para validação de credenciais
+2. Gerar tokens JWT customizados com dados de perfil
+3. Manter o sistema nesta configuração para a fase MVP (6 meses)
+4. Planejar possível migração para Auth0 a médio prazo (1 ano)
+
+## Justificativa
+
+### Por que a Abordagem Híbrida?
+1. Benefícios de segurança do Supabase:
+   - Hash de senha integrado
+   - Limitação de taxa
+   - Autenticação de dois fatores
+   - Proteção contra ataques comuns
+
+2. Controle e flexibilidade através do JWT customizado:
+   - Controle total sobre autorização
+   - Dados de perfil personalizados nos tokens
+   - Escalabilidade independente da lógica de autorização
+
+3. Considerações de escala atual:
+   - 20 usuários inicialmente
+   - ~50.000 requisições/mês
+   - Custo zero (dentro do plano gratuito do Supabase)
+   - Tempo mínimo de desenvolvimento
+
+## Alternativas Consideradas
+
+### 1. Supabase Auth Completo
+**Prós:**
+- Implementação mais simples
+- Sistema único para manter
+- Recursos de segurança integrados
+
+**Contras:**
+- Menos controle sobre autorização
+- Dependência do fornecedor
+- Customização limitada
+
+### 2. Sistema Interno Customizado
+**Prós:**
+- Controle completo
+- Sem dependências externas
+- Máxima flexibilidade
+
+**Contras:**
+- Maior complexidade de desenvolvimento
+- Responsabilidade pela segurança
+- Mais sobrecarga de manutenção
+
+### 3. OAuth + JWT
+**Prós:**
+- Padrão da indústria
+- Responsabilidade reduzida
+- Bom para integrações B2B
+
+**Contras:**
+- Configuração mais complexa
+- Múltiplos provedores para gerenciar
+- Possíveis complicações de UX
+
+## Consequências
+
+### Positivas
+1. **Segurança:**
+   - Autenticação de nível profissional através do Supabase
+   - Atualizações automáticas de segurança
+   - Proteção contra ataques comuns
+
+2. **Desenvolvimento:**
+   - Implementação inicial mais rápida
+   - Foco em recursos de negócio
+   - Evolução gradual possível
+
+3. **Custo:**
+   - Plano gratuito suficiente para escala atual
+   - Custos previsíveis de escalabilidade
+   - Sem investimento imediato em infraestrutura
+
+### Negativas
+1. **Técnicas:**
+   - Latência adicional (150-300ms para login)
+   - Dois sistemas para manter
+   - Possíveis problemas de sincronização
+
+2. **Operacionais:**
+   - Monitoramento mais complexo necessário
+   - Dois pontos de falha
+   - Complexidade na invalidação de cache
+
+3. **Longo Prazo:**
+   - Possível esforço de migração
+   - Aspectos de dependência do fornecedor
+   - Complexidade crescente com escala
+
+## Caminho de Migração
+1. **Curto Prazo (6 meses):**
+   - Implementar e estabilizar abordagem híbrida
+   - Foco na funcionalidade principal
+   - Monitorar desempenho e pontos de dor
+
+2. **Médio Prazo (1 ano):**
+   - Avaliar migração para Auth0
+   - Avaliar implementação de claims customizadas
+   - Planejar transição gradual
+
+3. **Longo Prazo:**
+   - Considerar sistema interno completo se necessário
+   - Avaliar com base em requisitos específicos
+   - Foco nas necessidades de integração B2B
+
+## Documentos Relacionados
+- [Detalhes de Implementação da Autenticação](../auth.mdc)
+- [Diretrizes de Segurança](../guardrails.mdc)
+- [Considerações de Implantação](../deployment.mdc)

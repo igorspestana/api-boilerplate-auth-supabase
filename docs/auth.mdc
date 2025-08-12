@@ -1,0 +1,254 @@
+---
+description: Estratégia de autenticação e controle de acesso
+globs: []
+alwaysApply: true
+---
+
+# Sistema de Autenticação Híbrida
+
+O sistema implementa uma autenticação híbrida que combina:
+- **Supabase Auth** para validação de credenciais
+- **JWT customizado** com dados dos perfis do sistema
+
+## Entidades do Sistema
+
+O sistema trabalha com as seguintes entidades principais:
+- **profiles**: Perfis de acesso com valores específicos ("admin", "user")
+- **users**: Usuários do sistema com autenticação
+- **projects**: Projetos criados pelos usuários (status: pending, active, completed, cancelled)
+
+### Perfis Disponíveis
+- **admin**: Acesso total ao sistema, pode criar usuários e gerenciar todos os recursos
+- **user**: Acesso limitado, pode gerenciar apenas seus próprios projetos
+
+## JWT
+
+- Usado em todas as rotas privadas
+- Assinado com chave secreta segura
+- Expira após tempo definido
+
+## Perfis
+
+- Usuários têm perfis vinculados através do campo `profile_id`
+- Perfis determinam permissões no sistema
+- Apenas usuários com perfil "admin" podem criar outros usuários
+- Perfis disponíveis: "admin" e "user"
+
+## Proteção
+
+- Middleware de autenticação obrigatório
+- Algumas rotas podem exigir perfis específicos
+
+## Como Funciona
+
+### 1. Login (`POST /api/auth/login`)
+1. Valida credenciais (email/senha) no Supabase Auth
+2. Busca dados do usuário na tabela `users` do sistema
+3. Gera JWT customizado com dados do perfil
+4. Desconecta da sessão do Supabase Auth (usamos apenas para validação)
+
+### 2. Criação de Usuário (`POST /api/auth/users`)
+1. Cria usuário no Supabase Auth com senha temporária
+2. Cria usuário na tabela `users` do sistema
+3. Envia email de reset de senha para o usuário definir sua própria senha
+4. Se falha em qualquer etapa, limpa o que foi criado
+
+### 3. Gerenciamento de Status (`PATCH /api/auth/users/:id/status`)
+1. Atualiza status na tabela `users`
+2. Sincroniza com Supabase Auth (bane/desbane usuário)
+
+## Formato de Resposta Padrão
+
+Todos os endpoints de autenticação seguem o formato padrão de resposta:
+
+```json
+{
+  "status": "success" | "error",
+  "message": "Descrição da operação",
+  "data": {}
+}
+```
+
+**Campos:**
+- `status`: "success" para operações bem-sucedidas, "error" para falhas
+- `message`: Descrição clara e concisa da operação ou erro
+- `data`: Objeto contendo os dados da resposta ou detalhes do erro
+
+## Tratamento de Erros
+
+O sistema trata diferentes tipos de erro seguindo o formato padrão de resposta. Para exemplos detalhados de códigos de erro e respostas, consulte a seção "Tratamento de Erros Específicos" em `docs/endpoints.mdc`.
+
+## Endpoints Disponíveis
+
+### Públicos
+- `POST /api/auth/login` - Login com email/senha
+- `POST /api/auth/reset-password` - Solicita reset de senha
+
+### Protegidos (requer JWT)
+- `GET /api/auth/me` - Dados do usuário atual
+- `GET /api/auth/validate` - Valida token JWT
+
+### Admin Only
+- `POST /api/auth/users` - Criar usuário
+- `PATCH /api/auth/users/:id/status` - Atualizar status
+- `POST /api/auth/change-password` - Alterar senha de usuário
+- `POST /api/auth/check-sync` - Verificar sincronização
+
+## Estrutura do JWT
+
+```json
+{
+  "id": "uuid-do-usuario",
+  "email": "usuario@exemplo.com",
+  "profile_id": "uuid-do-perfil",
+  "profile_name": "admin",
+  "iat": 1234567890,
+  "exp": 1234567890
+}
+```
+
+### Campos do JWT
+- `id`: UUID do usuário
+- `email`: Email do usuário
+- `profile_id`: UUID do perfil do usuário
+- `profile_name`: Nome do perfil ("admin" ou "user")
+- `iat`: Timestamp de emissão do token
+- `exp`: Timestamp de expiração do token
+
+## Configuração Necessária
+
+### Variáveis de Ambiente
+Consulte `docs/env.example` para a lista completa de variáveis de ambiente.
+
+**Variáveis específicas para autenticação:**
+- `SUPABASE_URL` - URL do projeto Supabase
+- `SUPABASE_SERVICE_ROLE_KEY` - Chave de serviço para operações administrativas
+- `SUPABASE_ANON_KEY` - Chave anônima para operações públicas
+- `JWT_SECRET` - Chave secreta para assinatura de tokens JWT
+- `JWT_EXPIRES_IN` - Tempo de expiração dos tokens JWT
+- `FRONTEND_URL` - URL do frontend para redirecionamentos
+
+### Configuração do Supabase
+
+1. **Configurar Auth no Supabase Dashboard:**
+   - Habilitar Email Auth
+   - Configurar Email Templates
+   - Definir Site URL e Redirect URLs
+
+2. **Configurar RLS (Row Level Security):**
+   ```sql
+   -- Exemplo de política RLS para tabela users
+   CREATE POLICY "Users can read own data" ON users 
+   FOR SELECT USING (auth.uid() = id);
+   ```
+
+## Fluxo de Trabalho
+
+### Para Administradores
+
+1. **Criar Usuário:**
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/users \
+     -H "Authorization: Bearer YOUR_ADMIN_JWT" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "João Silva",
+       "email": "joao@exemplo.com",
+       "profile_id": "uuid-do-perfil"
+     }'
+   ```
+
+2. **Verificar Sincronização:**
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/check-sync \
+     -H "Authorization: Bearer YOUR_ADMIN_JWT" \
+     -H "Content-Type: application/json" \
+     -d '{"email": "joao@exemplo.com"}'
+   ```
+
+### Para Usuários
+
+1. **Login:**
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{
+       "email": "joao@exemplo.com",
+       "password": "senha123"
+     }'
+   ```
+
+2. **Reset de Senha:**
+   ```bash
+   curl -X POST http://localhost:3001/api/auth/reset-password \
+     -H "Content-Type: application/json" \
+     -d '{"email": "joao@exemplo.com"}'
+   ```
+
+## Vantagens do Sistema Híbrido
+
+1. **Segurança:** Supabase Auth gerencia autenticação com padrões de segurança
+2. **Flexibilidade:** JWT customizado com dados específicos do sistema
+3. **Escalabilidade:** Supabase Auth suporta múltiplos provedores
+4. **Sincronização:** Mantém dados consistentes entre sistemas
+5. **Auditoria:** Logs estruturados em JSON com Winston de todas as operações
+6. **Recuperação:** Cleanup automático em caso de falha na criação de usuário
+7. **Temporização:** Senhas temporárias com reset automático para novos usuários
+
+## Tratamento de Erros
+
+O sistema trata diferentes tipos de erro seguindo o formato padrão de resposta. Consulte a seção "Tratamento de Erros Específicos" acima para exemplos detalhados.
+
+## Considerações de Segurança
+
+1. **JWT Secret:** Use uma chave forte e mantenha segura
+2. **HTTPS:** Sempre use HTTPS em produção
+3. **Rate Limiting:** Implemente rate limiting nos endpoints de auth
+4. **Logs:** Monitore logs estruturados de autenticação (Winston) para detectar atividades suspeitas
+5. **Expiração:** Configure expiração adequada dos JWTs
+
+## Monitoramento
+
+Monitore:
+- Tentativas de login falhosas
+- Criação de usuários
+- Mudanças de status
+- Sincronização entre sistemas
+- Performance dos endpoints de auth
+
+## Logging de Autenticação
+
+O sistema registra logs estruturados para todas as operações de autenticação usando Winston:
+
+### Operações Logadas
+- **Login**: Tentativas de login (sucesso/falha), erros específicos do Supabase
+- **Criação de usuários**: Dados do usuário criado, envio de email de reset
+- **Mudanças de status**: Sincronização com Supabase Auth (ban/unban)
+- **Reset de senha**: Solicitações e conclusões
+- **Alteração de senha**: Atualizações no Supabase Auth
+- **Sincronização**: Verificações de consistência entre sistemas
+
+### Níveis de Log Utilizados
+- **error**: Erros críticos (falhas de autenticação, criação de usuário)
+- **warn**: Avisos (falha no envio de email, problemas de sincronização)
+- **info**: Operações bem-sucedidas (login, criação, mudanças de status)
+
+### Exemplos de Logs
+```json
+{
+  "level": "error",
+  "message": "Supabase Auth error:",
+  "error": "Invalid login credentials"
+}
+
+{
+  "level": "warn", 
+  "message": "Failed to send password reset email:",
+  "error": "Email service error"
+}
+
+{
+  "level": "info",
+  "message": "User created successfully: user@example.com. Password reset email sent."
+}
+``` 

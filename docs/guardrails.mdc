@@ -1,0 +1,337 @@
+---
+description: Este documento descreve os mecanismos de proteção implementados na API para evitar comportamentos indesejados, falhas de segurança ou danos acidentais, especialmente no contexto de automações e agentes como o MCP no Cursor.
+globs: []
+alwaysApply: false
+---
+
+# 1. Proibição de deleções diretas (Delete Guardrail)
+
+## Objetivo
+Evitar remoção permanente de dados por agentes ou desenvolvedores sem revisão explícita.
+
+## Implementação
+- **Nenhum agente (MCP) pode propor código contendo comandos como:**
+  - `db.<tabela>.delete(...)`
+  - `prisma.<tabela>.delete(...)`
+  - `knex('...').delete()`
+  - SQL `DELETE FROM ...`
+
+- **Alternativa exigida**:
+  - Soft delete com campo `deletedAt` ou `isDeleted`
+  - Atualização de status (ex: `status = 'archived'`)
+  - Registro de auditoria com motivo e usuário
+
+# 2. Autenticação obrigatória
+
+- Toda rota (exceto `/auth/login`, `/auth/reset-password`, `/health`) exige header `Authorization: Bearer <JWT>`.
+- O token deve ser validado e decodificado via middleware antes de qualquer acesso ao banco ou lógica de negócio.
+- JWT customizado contém dados de perfil (`profile_id`, `profile_name`) para controle de acesso.
+
+> **Nota**: Para detalhes sobre endpoints de autenticação, formatos de resposta e tratamento de erros, consulte `docs/endpoints.mdc` seção "Autenticação".
+
+# 3. Controle de acesso (Role-based)
+
+- Usuários possuem perfis como `admin` e `user`.
+- Cada ação sensível (ex: upload, alteração de status, leitura de dados confidenciais) verifica permissões com middleware `checkRole()`.
+- Perfis são validados através do campo `profile_name` no JWT customizado.
+- Sincronização automática de status entre banco local e Supabase Auth (ban/unban).
+
+> **Nota**: Para detalhes sobre perfis de acesso e estrutura de perfis, consulte `docs/endpoints.mdc` seção "Autenticação" > "Perfis de Acesso".
+
+# 4. Validação de entrada
+
+- Todos os inputs (body, params, query) são validados com **Zod** antes de qualquer operação.
+- Requisições com dados inválidos recebem erro 400 com mensagem detalhada.
+
+# 5. Rate limiting
+
+> **Nota**: Para detalhes técnicos sobre implementação, headers de resposta, middlewares e configuração por ambiente, consulte `docs/endpoints.mdc` seção "Rate Limiting".
+
+## Overview
+
+O sistema implementa rate limiting configurável para diferentes tipos de endpoints, protegendo contra abuso e garantindo performance adequada.
+
+## Logging
+
+Todas as tentativas de rate limiting são registradas para auditoria de segurança:
+
+```json
+{
+  "level": "warn",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "message": "Rate limit exceeded for authentication endpoint",
+  "ip": "192.168.1.1",
+  "userAgent": "Mozilla/5.0...",
+  "endpoint": "/api/auth/login",
+  "limit": 5,
+  "window": 1
+}
+```
+
+## Monitoramento
+
+### Métricas Importantes
+
+- **Rate limit hits**: Número de vezes que o limite foi excedido
+- **Endpoints mais afetados**: Quais endpoints têm mais tentativas de rate limiting
+- **IPs problemáticos**: IPs que frequentemente excedem limites
+- **Padrões de uso**: Análise de padrões de uso da API
+
+### Alertas Recomendados
+
+- Rate limit excedido mais de 10 vezes por hora
+- IP específico excedendo limites consistentemente
+- Aumento súbito em tentativas de rate limiting
+
+
+
+# 6. Configuração de CORS (Cross-Origin Resource Sharing)
+
+## Objetivo
+Implementar CORS configurável para permitir requisições de origens específicas, garantindo segurança e flexibilidade para diferentes ambientes.
+
+## Configuração
+
+### Variáveis de Ambiente
+
+```env
+# CORS Configuration
+CORS_ORIGIN=http://localhost:3000
+CORS_CREDENTIALS=true
+CORS_METHODS=GET,POST,PUT,PATCH,DELETE,OPTIONS
+```
+
+### Descrição das Variáveis
+
+- **CORS_ORIGIN**: URL da origem permitida (frontend)
+- **CORS_CREDENTIALS**: Permite envio de cookies e headers de autenticação
+- **CORS_METHODS**: Métodos HTTP permitidos
+
+### Configuração por Ambiente
+
+#### Desenvolvimento
+```env
+CORS_ORIGIN=http://localhost:3000
+CORS_CREDENTIALS=true
+CORS_METHODS=GET,POST,PUT,PATCH,DELETE,OPTIONS
+```
+
+#### Produção
+```env
+CORS_ORIGIN=https://your-frontend-domain.com
+CORS_CREDENTIALS=true
+CORS_METHODS=GET,POST,PUT,PATCH,DELETE,OPTIONS
+```
+
+#### Múltiplas Origens
+```env
+CORS_ORIGIN=http://localhost:3000,https://staging.example.com
+CORS_CREDENTIALS=true
+CORS_METHODS=GET,POST,PUT,PATCH,DELETE,OPTIONS
+```
+
+## Implementação
+
+### Middleware de CORS
+
+```typescript
+import cors from 'cors';
+import { config } from '../config';
+
+const corsOptions = {
+  origin: config.cors.origin,
+  credentials: config.cors.credentials,
+  methods: config.cors.methods,
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'X-API-Key'
+  ],
+  exposedHeaders: [
+    'X-RateLimit-Limit',
+    'X-RateLimit-Remaining',
+    'X-RateLimit-Reset'
+  ]
+};
+
+export const corsMiddleware = cors(corsOptions);
+```
+
+### Configuração Dinâmica
+
+```typescript
+const allowedOrigins = config.cors.origin.split(',').map(origin => origin.trim());
+
+const corsOptions = {
+  origin: (origin: string | undefined, callback: Function) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: config.cors.credentials,
+  methods: config.cors.methods
+};
+```
+
+## Headers de Segurança
+
+### Headers Permitidos
+- `Origin`: Origem da requisição
+- `X-Requested-With`: Identifica requisições AJAX
+- `Content-Type`: Tipo de conteúdo
+- `Accept`: Tipos aceitos
+- `Authorization`: Token JWT
+- `X-API-Key`: Chave de API (se aplicável)
+
+### Headers Expostos
+- `X-RateLimit-Limit`: Limite de rate limiting
+- `X-RateLimit-Remaining`: Requisições restantes
+- `X-RateLimit-Reset`: Tempo para reset do rate limiting
+
+## Segurança
+
+### Boas Práticas
+
+1. **Origem Específica**: Sempre especifique origens exatas, evite `*`
+2. **HTTPS em Produção**: Use apenas HTTPS em produção
+3. **Credenciais**: Configure `credentials: true` apenas quando necessário
+4. **Métodos Limitados**: Especifique apenas os métodos necessários
+5. **Headers Mínimos**: Exponha apenas headers essenciais
+
+### Configuração Segura
+
+```typescript
+const secureCorsOptions = {
+  origin: config.cors.origin,
+  credentials: config.cors.credentials,
+  methods: config.cors.methods,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+  maxAge: 86400 // Cache preflight for 24 hours
+};
+```
+
+## Validação de Configuração
+
+```typescript
+const validateCorsConfig = () => {
+  if (!config.cors.origin) {
+    throw new Error('CORS_ORIGIN is required');
+  }
+  
+  if (config.nodeEnv === 'production' && config.cors.origin.includes('localhost')) {
+    logger.warn('CORS_ORIGIN contains localhost in production environment');
+  }
+};
+```
+
+## Troubleshooting
+
+### Problemas Comuns
+
+1. **Erro de CORS no Frontend**
+   - Verifique se `CORS_ORIGIN` está configurado corretamente
+   - Confirme se a origem do frontend está na lista permitida
+
+2. **Credenciais não Enviadas**
+   - Configure `CORS_CREDENTIALS=true`
+   - Frontend deve usar `credentials: 'include'`
+
+3. **Headers não Permitidos**
+   - Adicione headers necessários em `allowedHeaders`
+   - Verifique se o header está sendo enviado corretamente
+
+## Monitoramento
+
+### Logs de CORS
+
+```typescript
+// Log CORS violations
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err.message === 'Not allowed by CORS') {
+    logger.warn('CORS violation detected', {
+      origin: req.headers.origin,
+      userAgent: req.headers['user-agent'],
+      ip: req.ip
+    });
+  }
+  next(err);
+});
+```
+
+### Métricas
+
+- **CORS Violations**: Número de tentativas de acesso de origens não permitidas
+- **Preflight Requests**: Número de requisições OPTIONS
+- **Origin Distribution**: Distribuição de origens das requisições
+
+## Integração com Outros Middlewares
+
+### Ordem de Aplicação
+
+```typescript
+// 1. CORS (primeiro)
+app.use(corsMiddleware);
+
+// 2. Helmet (headers de segurança)
+app.use(helmet());
+
+// 3. Rate limiting
+app.use('/api/auth', authRateLimit);
+app.use('/api', generalRateLimit);
+
+// 4. Body parsing
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 5. Routes
+app.use('/api', apiRoutes);
+```
+
+# 7. Proteção de ownership
+
+- Antes de retornar dados de um recurso (ex: projeto, pedido), a API valida se o `req.user.id` corresponde ao `resource.ownerId`.
+- Bloqueia acesso não autorizado, mesmo com token válido.
+- Validação de perfil único admin antes de desativar usuários.
+- Cleanup automático em caso de falha na criação de usuários (rollback).
+
+# 8. Auditoria
+
+- Ações críticas (update, delete, status) são registradas na base de auditoria com:
+  - ID do usuário
+  - Data/hora
+  - Ação realizada
+  - ID do recurso afetado
+- Logs estruturados em JSON usando Winston para todas as operações de autenticação
+- Níveis de log: `error` (críticos), `warn` (avisos), `info` (sucessos)
+- Sincronização de status entre sistemas é logada para auditoria
+
+# 9. Restrições para agentes MCP (Cursor)
+
+- Agentes não podem propor código com operações destrutivas ou de risco.
+- Propostas do agente que contenham:
+  - `delete`
+  - Acesso direto ao banco
+  - Alteração de permissões
+  - Comandos shell perigosos (`rm`, `drop`, etc)
+
+  ...devem ser revisadas manualmente antes de aprovação.
+
+- Guardrails estão definidos também em `.cursor/rules/rules-node.mdc`, onde o agente é explicitamente instruído a evitar essas ações.
+
+# Conclusão
+
+Esses guardrails garantem que:
+- Agentes automatizados não causem danos acidentais
+- Desenvolvedores humanos tenham clareza sobre limites do sistema
+- A segurança, estabilidade e rastreabilidade da API sejam mantidas
+
+Para novos guardrails ou exceções, abra uma PR com explicação técnica e aprovação de um mantenedor.

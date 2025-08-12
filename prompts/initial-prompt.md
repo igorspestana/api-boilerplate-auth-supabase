@@ -1,0 +1,1 @@
+Utilize os arquivos em @node-rules.mdc e @docs/ como contexto e inicie o desenvolvimento do projeto seguindo os critérios informados.

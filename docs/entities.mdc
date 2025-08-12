@@ -1,0 +1,194 @@
+---
+description: Entidades principais da API Boilerplate com seus campos e regras
+globs: []
+alwaysApply: true
+---
+
+## Entidades Principais
+
+### profiles
+
+#### Estrutura da Tabela
+```sql
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+#### Campos
+- `id`: UUID (chave primária)
+- `name`: Texto único com valores específicos ("admin" ou "user")
+- `created_at`: Timestamp de criação
+
+#### Valores de Perfil
+- **admin**: Perfil de administrador com acesso total ao sistema
+- **user**: Perfil de usuário com acesso limitado aos próprios recursos
+
+#### Regras de Negócio
+- Cada perfil tem um nome único (constraint UNIQUE)
+- Perfis são usados para controle de acesso (RBAC)
+- Perfis são atribuídos aos usuários
+- Perfis não podem ser deletados se estiverem em uso
+- Nomes de perfil são case-insensitive
+- Perfis são referenciados no JWT como `profile_name` para controle de acesso
+
+#### Relacionamentos
+- **users**: Um perfil pode ter múltiplos usuários (1:N)
+
+---
+
+### users
+
+#### Estrutura da Tabela
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  profile_id UUID NOT NULL REFERENCES profiles(id),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+#### Campos
+- `id`: UUID (chave primária)
+- `name`: Texto obrigatório
+- `email`: Texto único obrigatório
+- `status`: Texto (`active` ou `inactive`) - padrão: `active`
+- `profile_id`: UUID (referência obrigatória a `profiles`)
+- `created_at`: Timestamp de criação
+
+#### Regras de Negócio
+- Todo usuário deve ter um perfil (NOT NULL)
+- Email deve ser único no sistema
+- Autenticação via JWT customizado com dados de perfil
+- Apenas usuários `active` podem operar no sistema
+- Status não pode ser alterado para `inactive` se o usuário for o único admin
+- Email deve ser validado no formato correto
+- Nome não pode estar vazio ou conter apenas espaços
+- Sincronização automática com Supabase Auth para status (ban/unban)
+- Cleanup automático em caso de falha na criação
+
+#### Validações
+- Email: formato válido de email
+- Nome: mínimo 2 caracteres, máximo 100
+- Status: apenas valores permitidos (`active`, `inactive`)
+
+#### Relacionamentos
+- **profiles**: Cada usuário pertence a um perfil (N:1) - referenciado no JWT
+- **projects**: Um usuário pode ter múltiplos projetos (1:N)
+
+---
+
+### projects
+
+#### Estrutura da Tabela
+```sql
+CREATE TABLE projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'completed', 'cancelled')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+#### Campos
+- `id`: UUID (chave primária)
+- `user_id`: UUID do usuário proprietário (referência obrigatória a `users`)
+- `name`: Nome do projeto (obrigatório)
+- `status`: Status atual do projeto
+- `created_at`: Timestamp de criação
+
+#### Status do Projeto
+
+##### Estados Possíveis
+1. **pending** (padrão)
+   - Estado inicial de todos os projetos
+   - Projeto criado mas ainda não iniciado
+
+2. **active**
+   - Projeto em desenvolvimento ativo
+   - Pode ser alterado para `completed` ou `cancelled`
+
+3. **completed**
+   - Projeto finalizado com sucesso
+   - Estado final positivo
+
+4. **cancelled**
+   - Projeto cancelado/abandonado
+   - Estado final negativo
+
+##### Transições de Status Válidas
+```
+pending → active → completed
+pending → active → cancelled
+pending → cancelled
+```
+
+#### Regras de Negócio
+- **Criação**: Projetos sempre iniciam com status `pending`
+- **Propriedade**: Apenas o dono do projeto pode alterar seus dados
+- **Status**: Apenas o dono pode alterar o status do projeto
+- **Validação**: Status deve ser um dos valores válidos definidos
+- **Auditoria**: Todas as alterações são registradas nos logs
+- **Exclusão**: Soft delete implementado (não remove fisicamente)
+- **Nome**: Deve ser único por usuário (case-insensitive)
+
+#### Validações
+- Nome: obrigatório, mínimo 3 caracteres, máximo 100
+- Status: apenas valores permitidos (`pending`, `active`, `completed`, `cancelled`)
+- Usuário deve estar autenticado e ativo
+- Nome não pode estar vazio ou conter apenas espaços
+
+#### Relacionamentos
+- **users**: Cada projeto pertence a um usuário (N:1) - relacionamento obrigatório
+- **panels**: Um projeto pode ter múltiplos painéis (1:N) - futuro
+- **files**: Um projeto pode ter múltiplos arquivos (1:N) - futuro
+
+#### Operações Permitidas por Perfil
+- **admin**: Pode visualizar e gerenciar todos os projetos e usuários do sistema
+- **user**: Pode visualizar e gerenciar apenas seus próprios projetos
+
+---
+
+## Regras Globais do Sistema
+
+### Autenticação e Autorização
+- Todos os endpoints (exceto login e reset-password) requerem autenticação JWT
+- Tokens JWT têm expiração configurável
+- Refresh tokens implementados para renovação automática
+- Rate limiting aplicado por endpoint e por usuário
+
+### Auditoria e Logging
+- Todas as operações CRUD são registradas
+- Logs incluem: usuário, timestamp, operação, dados alterados
+- Logs de erro separados dos logs de operação
+- Logs estruturados em JSON para facilitar análise
+
+### Validação de Dados
+- Todos os inputs são validados com Zod schemas
+- Sanitização automática de dados de entrada
+- Validação de tipos e formatos antes do processamento
+- Mensagens de erro padronizadas e localizadas
+
+### Performance e Segurança
+- Índices criados automaticamente para chaves estrangeiras
+- Prepared statements para prevenir SQL injection
+- CORS configurado para origens específicas (consulte `docs/guardrails.mdc` seção 6 para configuração detalhada)
+- Headers de segurança via Helmet
+- Rate limiting para prevenir abuso
+
+### Tratamento de Erros
+- Erros padronizados com códigos específicos
+- Stack traces apenas em desenvolvimento
+- Logs de erro detalhados para debugging
+- Respostas de erro consistentes em formato JSON
+- **Regras:**
+    - Projetos sempre iniciam com status `pending`
+    - Criados por usuários autenticados
+    - Apenas o dono do projeto pode alterar o status
+    - Status válidos: `pending`, `active`, `completed`, `cancelled`
