@@ -31,7 +31,7 @@ A comprehensive Node.js API boilerplate with TypeScript, Supabase authentication
 ### 1. Clone and Install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/igorspestana/api-boilerplate-auth-supabase.git
 cd api-boilerplate-auth-supabase
 npm install
 ```
